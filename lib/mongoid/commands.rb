@@ -62,12 +62,8 @@ module Mongoid #:nodoc:
       def save(validate = true)
         new = new_record?
         run_callbacks(:before_create) if new
-        begin
-          saved = Save.execute(self, validate)
-        rescue Mongo::OperationFailure => e
-          errors.add(:mongoid, e.message)
-        end
-        run_callbacks(:after_create) if new
+        saved = Save.execute(self, validate)
+        run_callbacks(:after_create) if new && saved
         saved
       end
 
@@ -125,11 +121,7 @@ module Mongoid #:nodoc:
       # Returns: the +Document+.
       def create(attributes = {})
         document = new(attributes)
-        begin
-          Create.execute(document)
-        rescue Mongo::OperationFailure => e
-          document.errors.add(:mongoid, e.message)
-        end
+        Create.execute(document)
         document
       end
 

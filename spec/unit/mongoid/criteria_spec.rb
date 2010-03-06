@@ -127,10 +127,10 @@ describe Mongoid::Criteria do
       @criteria.instance_variable_set(:@context, @context)
     end
 
-    context "when the count is 0" do
+    context "when the context is blank" do
 
       before do
-        @context.expects(:count).returns(0)
+        @context.expects(:blank?).returns(true)
       end
 
       it "returns true" do
@@ -138,10 +138,10 @@ describe Mongoid::Criteria do
       end
     end
 
-    context "when the count is greater than 0" do
+    context "when the context is not blank" do
 
       before do
-        @context.expects(:count).returns(10)
+        @context.expects(:blank?).returns(false)
       end
 
       it "returns false" do
@@ -274,6 +274,13 @@ describe Mongoid::Criteria do
       @cursor = stub(:count => 10)
     end
 
+    it "delegates to the context#iterate" do
+      @context = stub('context')
+      @criteria.stubs(:context).returns(@context)
+      @context.expects(:iterate)
+      @criteria.each
+    end
+
     context "when the criteria has not been executed" do
 
       before do
@@ -318,7 +325,12 @@ describe Mongoid::Criteria do
 
       before do
         Person.expects(:collection).returns(@collection)
-        @collection.expects(:find).with({ :_type => { "$in" => ["Doctor", "Person"] }, :title => "Sir" }, {}).returns(@cursor)
+        @collection.expects(:find).with(
+          { :_type => { "$in" => ["Doctor", "Person"] },
+            :title => "Sir"
+          },
+          { :cache => true }
+        ).returns(@cursor)
         @cursor.expects(:each).yields(@person)
         @criteria.cache
         @criteria.each do |doc|
@@ -387,6 +399,7 @@ describe Mongoid::Criteria do
     it "sets the klass to the given class" do
       criteria.klass.should == Person
     end
+
   end
 
   describe "#last" do
@@ -635,18 +648,35 @@ describe Mongoid::Criteria do
 
     context "with a single argument" do
 
-      before do
-        @id = Mongo::ObjectID.new.to_s
-        @document = stub
-        @criteria = mock
-        Mongoid::Criteria.expects(:new).returns(@criteria)
+      context "when the arg is a string" do
+
+        before do
+          @id = Mongo::ObjectID.new.to_s
+          @document = stub
+          @criteria = mock
+          Mongoid::Criteria.expects(:new).returns(@criteria)
+        end
+
+        it "delegates to #id_criteria" do
+          @criteria.expects(:id_criteria).with(@id).returns(@document)
+          Mongoid::Criteria.translate(Person, @id).should == @document
+        end
       end
 
-      it "delegates to #id_criteria" do
-        @criteria.expects(:id_criteria).with(@id).returns(@document)
-        Mongoid::Criteria.translate(Person, @id).should == @document
-      end
+      context "when the arg is an object id" do
 
+        before do
+          @id = Mongo::ObjectID.new
+          @document = stub
+          @criteria = mock
+          Mongoid::Criteria.expects(:new).returns(@criteria)
+        end
+
+        it "delegates to #id_criteria" do
+          @criteria.expects(:id_criteria).with(@id).returns(@document)
+          Mongoid::Criteria.translate(Person, @id).should == @document
+        end
+      end
     end
 
     context "multiple arguments" do
@@ -679,6 +709,22 @@ describe Mongoid::Criteria do
 
         it "returns a criteria with a selector from the conditions" do
           @criteria.selector.should == { :title => "Test" }
+        end
+
+        it "returns a criteria with klass Person" do
+          @criteria.klass.should == Person
+        end
+
+      end
+
+      context "when Person, :conditions => {:id => id}" do
+
+        before do
+          @criteria = Mongoid::Criteria.translate(Person, :conditions => { :id => "1234e567" })
+        end
+
+        it "returns a criteria with a selector from the conditions" do
+          @criteria.selector.should == { :_id => "1234e567" }
         end
 
         it "returns a criteria with klass Person" do

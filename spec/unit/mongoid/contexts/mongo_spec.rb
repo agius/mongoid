@@ -27,6 +27,43 @@ describe Mongoid::Contexts::Mongo do
 
   end
 
+  describe "blank?" do
+
+    before do
+      @criteria = Mongoid::Criteria.new(Game)
+      @criteria.where(:test => 'Testing')
+      @context = Mongoid::Contexts::Mongo.new(@criteria)
+    end
+
+    context "when a document exists" do
+
+      before do
+        @doc = mock
+        @collection = mock
+        Game.expects(:collection).returns(@collection)
+        @collection.expects(:find_one).with({ :test => "Testing" }, { :fields => [ :_id ] }).returns(@doc)
+      end
+
+      it "returns false" do
+        @context.blank?.should be_false
+      end
+    end
+
+    context "when a document does not exist" do
+
+      before do
+        @doc = mock
+        @collection = mock
+        Game.expects(:collection).returns(@collection)
+        @collection.expects(:find_one).with({ :test => "Testing" }, { :fields => [ :_id ] }).returns(nil)
+      end
+
+      it "returns true" do
+        @context.blank?.should be_true
+      end
+    end
+  end
+
   describe "#count" do
 
     before do
@@ -73,7 +110,13 @@ describe Mongoid::Contexts::Mongo do
     before do
       @cursor = stub(:count => 500)
       @collection = mock
-      @klass = stub(:collection => @collection, :hereditary => false, :instantiate => @person)
+      @klass = stub(
+        :collection => @collection,
+        :hereditary => false,
+        :instantiate => @person,
+        :enslaved? => false,
+        :cached? => false
+      )
       @criteria = Mongoid::Criteria.new(@klass)
       @criteria.where(selector).skip(20)
       @context = Mongoid::Contexts::Mongo.new(@criteria)
@@ -132,7 +175,13 @@ describe Mongoid::Contexts::Mongo do
       end
 
       it "calls group on the collection with the aggregate js" do
-        @collection.expects(:group).with([:field1], {:_type => { "$in" => ["Doctor", "Person"] }}, {:group => []}, @reduce, true).returns(@grouping)
+        @collection.expects(:group).with(
+          [:field1],
+          {:_type => { "$in" => ["Doctor", "Person"] }},
+          {:group => []},
+          @reduce,
+          true
+        ).returns(@grouping)
         @context.group
       end
 
@@ -145,28 +194,120 @@ describe Mongoid::Contexts::Mongo do
     let(:selector) { { :field => "value"  } }
     let(:options) { { :skip => 20 } }
     let(:klass) { Person }
+    let(:criteria) { Mongoid::Criteria.new(klass) }
+    let(:context) { Mongoid::Contexts::Mongo.new(criteria) }
 
     before do
-      @criteria = Mongoid::Criteria.new(klass)
-      @criteria.where(selector).skip(20)
-      @context = Mongoid::Contexts::Mongo.new(@criteria)
+      criteria.where(selector).skip(20)
     end
 
     it "sets the selector" do
-      @context.selector.should == @criteria.selector
+      context.selector.should == criteria.selector
     end
 
     it "sets the options" do
-      @context.options.should == options
+      context.options.should == options
     end
 
     it "sets the klass" do
-      @context.klass.should == klass
+      context.klass.should == klass
     end
 
-    it "set the selector to query across the _type of the Criteria's klass when it is hereditary" do
-      @context.selector[:_type].should == {'$in' => Person._types}
+    context "when persisting type" do
+
+      it "set the selector to query across the _type when it is hereditary" do
+        context.selector[:_type].should == {'$in' => Person._types}
+      end
+
     end
+
+    context "when not persisting type" do
+
+      before do
+        Mongoid.persist_types = false
+      end
+
+      after do
+        Mongoid.persist_types = true
+      end
+
+      it "does not add the type to the selector" do
+        context.selector[:_type].should be_nil
+      end
+
+    end
+
+    context "enslaved and cached classes" do
+
+      let(:klass) { Game }
+
+      it "enslaves the criteria" do
+        context.criteria.should be_enslaved
+      end
+
+      it "caches the criteria" do
+        context.criteria.should be_cached
+      end
+    end
+  end
+
+  describe "#iterate" do
+    before do
+      @criteria = Mongoid::Criteria.new(Person)
+      @context = Mongoid::Contexts::Mongo.new(@criteria)
+      @person = Person.new(:title => "Sir")
+      @cursor = stub('cursor')
+      @cursor.stubs(:each).yields(@person)
+    end
+
+    context "when not caching" do
+
+      it "executes the criteria" do
+        @context.expects(:execute).returns(@cursor)
+        @context.iterate do |person|
+          person.should == @person
+        end
+
+      end
+
+    end
+
+    context "when caching" do
+      before do
+        @criteria.cache
+      end
+
+      it "executes the criteria" do
+        @context.expects(:execute).returns(@cursor)
+        @context.iterate do |person|
+          person.should == @person
+        end
+      end
+
+      it "executes only once and it caches the result" do
+        @context.expects(:execute).once.returns(@cursor)
+        @context.iterate do |person|
+          person.should == @person
+        end
+        @context.iterate do |person|
+          person.should == @person
+        end
+      end
+
+      it "executes even if there is no block" do
+        @context.expects(:execute).once.returns(@cursor)
+        @context.iterate
+      end
+
+      it "caches even if there is no block" do
+        @context.expects(:execute).once.returns(@cursor)
+        @context.iterate
+        @context.iterate do |person|
+          person.should == @person
+        end
+      end
+    end
+
   end
 
   describe "#last" do
@@ -230,7 +371,7 @@ describe Mongoid::Contexts::Mongo do
   describe "#max" do
 
     before do
-      @reduce = Mongoid::Contexts::Mongo::MAX_REDUCE.gsub("[field]", "age")
+      @reduce = Mongoid::Javascript.max.gsub("[field]", "age")
       @collection = mock
       Person.expects(:collection).returns(@collection)
       @criteria = Mongoid::Criteria.new(Person)
@@ -253,7 +394,7 @@ describe Mongoid::Contexts::Mongo do
   describe "#min" do
 
     before do
-      @reduce = Mongoid::Contexts::Mongo::MIN_REDUCE.gsub("[field]", "age")
+      @reduce = Mongoid::Javascript.min.gsub("[field]", "age")
       @collection = mock
       Person.expects(:collection).returns(@collection)
       @criteria = Mongoid::Criteria.new(Person)
@@ -365,7 +506,7 @@ describe Mongoid::Contexts::Mongo do
     context "when klass not provided" do
 
       before do
-        @reduce = Mongoid::Contexts::Mongo::SUM_REDUCE.gsub("[field]", "age")
+        @reduce = Mongoid::Javascript.sum.gsub("[field]", "age")
         @collection = mock
         @criteria = Mongoid::Criteria.new(Person)
         @context = Mongoid::Contexts::Mongo.new(@criteria)
@@ -459,6 +600,39 @@ describe Mongoid::Contexts::Mongo do
 
       end
 
+      context "when an array of object ids" do
+
+        let(:ids) do
+          (0..2).inject([]) { |ary, i| ary << Mongo::ObjectID.new }
+        end
+
+        context "when documents are found" do
+
+          let(:docs) do
+            (0..2).inject([]) { |ary, i| ary << stub }
+          end
+
+          before do
+            criteria.expects(:id).with(ids).returns(criteria)
+          end
+
+          it "returns matching documents" do
+            context.expects(:execute).returns(docs)
+            context.id_criteria(ids).should == docs
+          end
+
+        end
+
+        context "when documents are not found" do
+
+          it "raises an error" do
+            context.expects(:execute).returns([])
+            lambda { context.id_criteria(ids) }.should raise_error
+          end
+
+        end
+
+      end
     end
 
   end

@@ -43,7 +43,7 @@ module Mongoid #:nodoc:
           if set_allowed?(key)
             @attributes[key.to_s] = value
           else
-            send("#{key}=", value) if value
+            send("#{key}=", value)
           end
         end
       end
@@ -129,6 +129,7 @@ module Mongoid #:nodoc:
         identify if id.blank?
         notify
       end
+      alias :attributes= write_attributes
 
       protected
       # Return true is dynamic field setting is enabled.

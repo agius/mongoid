@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{mongoid}
-  s.version = "1.2.6"
+  s.version = "1.2.8"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Durran Jordan"]
-  s.date = %q{2010-02-10}
+  s.date = %q{2010-02-25}
   s.email = %q{durran@gmail.com}
   s.extra_rdoc_files = [
     "README.rdoc"
@@ -31,9 +31,11 @@ Gem::Specification.new do |s|
      "lib/mongoid/associations/has_many_related.rb",
      "lib/mongoid/associations/has_one.rb",
      "lib/mongoid/associations/has_one_related.rb",
+     "lib/mongoid/associations/meta_data.rb",
      "lib/mongoid/associations/options.rb",
      "lib/mongoid/associations/proxy.rb",
      "lib/mongoid/attributes.rb",
+     "lib/mongoid/caching.rb",
      "lib/mongoid/callbacks.rb",
      "lib/mongoid/collection.rb",
      "lib/mongoid/collections/cyclic_iterator.rb",
@@ -53,6 +55,7 @@ Gem::Specification.new do |s|
      "lib/mongoid/config.rb",
      "lib/mongoid/contexts.rb",
      "lib/mongoid/contexts/enumerable.rb",
+     "lib/mongoid/contexts/ids.rb",
      "lib/mongoid/contexts/mongo.rb",
      "lib/mongoid/contexts/paging.rb",
      "lib/mongoid/criteria.rb",
@@ -62,6 +65,7 @@ Gem::Specification.new do |s|
      "lib/mongoid/criterion/optional.rb",
      "lib/mongoid/cursor.rb",
      "lib/mongoid/document.rb",
+     "lib/mongoid/enslavement.rb",
      "lib/mongoid/errors.rb",
      "lib/mongoid/extensions.rb",
      "lib/mongoid/extensions/array/accessors.rb",
@@ -92,6 +96,8 @@ Gem::Specification.new do |s|
      "lib/mongoid/finders.rb",
      "lib/mongoid/identity.rb",
      "lib/mongoid/indexes.rb",
+     "lib/mongoid/javascript.rb",
+     "lib/mongoid/javascript/functions.yml",
      "lib/mongoid/matchers.rb",
      "lib/mongoid/matchers/all.rb",
      "lib/mongoid/matchers/default.rb",
@@ -148,9 +154,11 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/associations/has_many_spec.rb",
      "spec/unit/mongoid/associations/has_one_related_spec.rb",
      "spec/unit/mongoid/associations/has_one_spec.rb",
+     "spec/unit/mongoid/associations/meta_data_spec.rb",
      "spec/unit/mongoid/associations/options_spec.rb",
      "spec/unit/mongoid/associations_spec.rb",
      "spec/unit/mongoid/attributes_spec.rb",
+     "spec/unit/mongoid/caching_spec.rb",
      "spec/unit/mongoid/callbacks_spec.rb",
      "spec/unit/mongoid/collection_spec.rb",
      "spec/unit/mongoid/collections/cyclic_iterator_spec.rb",
@@ -167,6 +175,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/config_spec.rb",
      "spec/unit/mongoid/contexts/enumerable_spec.rb",
      "spec/unit/mongoid/contexts/mongo_spec.rb",
+     "spec/unit/mongoid/contexts_spec.rb",
      "spec/unit/mongoid/criteria_spec.rb",
      "spec/unit/mongoid/criterion/complex_spec.rb",
      "spec/unit/mongoid/criterion/exclusion_spec.rb",
@@ -174,6 +183,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/criterion/optional_spec.rb",
      "spec/unit/mongoid/cursor_spec.rb",
      "spec/unit/mongoid/document_spec.rb",
+     "spec/unit/mongoid/enslavement_spec.rb",
      "spec/unit/mongoid/errors_spec.rb",
      "spec/unit/mongoid/extensions/array/accessors_spec.rb",
      "spec/unit/mongoid/extensions/array/assimilation_spec.rb",
@@ -202,6 +212,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/finders_spec.rb",
      "spec/unit/mongoid/identity_spec.rb",
      "spec/unit/mongoid/indexes_spec.rb",
+     "spec/unit/mongoid/javascript_spec.rb",
      "spec/unit/mongoid/matchers/all_spec.rb",
      "spec/unit/mongoid/matchers/default_spec.rb",
      "spec/unit/mongoid/matchers/exists_spec.rb",
@@ -263,9 +274,11 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/associations/has_many_spec.rb",
      "spec/unit/mongoid/associations/has_one_related_spec.rb",
      "spec/unit/mongoid/associations/has_one_spec.rb",
+     "spec/unit/mongoid/associations/meta_data_spec.rb",
      "spec/unit/mongoid/associations/options_spec.rb",
      "spec/unit/mongoid/associations_spec.rb",
      "spec/unit/mongoid/attributes_spec.rb",
+     "spec/unit/mongoid/caching_spec.rb",
      "spec/unit/mongoid/callbacks_spec.rb",
      "spec/unit/mongoid/collection_spec.rb",
      "spec/unit/mongoid/collections/cyclic_iterator_spec.rb",
@@ -282,6 +295,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/config_spec.rb",
      "spec/unit/mongoid/contexts/enumerable_spec.rb",
      "spec/unit/mongoid/contexts/mongo_spec.rb",
+     "spec/unit/mongoid/contexts_spec.rb",
      "spec/unit/mongoid/criteria_spec.rb",
      "spec/unit/mongoid/criterion/complex_spec.rb",
      "spec/unit/mongoid/criterion/exclusion_spec.rb",
@@ -289,6 +303,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/criterion/optional_spec.rb",
      "spec/unit/mongoid/cursor_spec.rb",
      "spec/unit/mongoid/document_spec.rb",
+     "spec/unit/mongoid/enslavement_spec.rb",
      "spec/unit/mongoid/errors_spec.rb",
      "spec/unit/mongoid/extensions/array/accessors_spec.rb",
      "spec/unit/mongoid/extensions/array/assimilation_spec.rb",
@@ -317,6 +332,7 @@ Gem::Specification.new do |s|
      "spec/unit/mongoid/finders_spec.rb",
      "spec/unit/mongoid/identity_spec.rb",
      "spec/unit/mongoid/indexes_spec.rb",
+     "spec/unit/mongoid/javascript_spec.rb",
      "spec/unit/mongoid/matchers/all_spec.rb",
      "spec/unit/mongoid/matchers/default_spec.rb",
      "spec/unit/mongoid/matchers/exists_spec.rb",

@@ -74,6 +74,19 @@ describe Mongoid::Contexts::Enumerable do
       end
     end
 
+    context "when limit is set without skip in the options" do
+
+      before do
+        @criteria.limit(2)
+        @context = Mongoid::Contexts::Enumerable.new(@criteria)
+      end
+
+      it "properly narrows down the matching results" do
+        @context.execute.size.should == 2
+      end
+
+  end
+
   end
 
   describe "#first" do
@@ -130,6 +143,22 @@ describe Mongoid::Contexts::Enumerable do
       @context.documents.should == documents
     end
 
+  end
+
+  describe "#iterate" do
+    before do
+      @criteria.where(:street => "Bourke Street")
+      @criteria.documents = @docs
+      @context = Mongoid::Contexts::Enumerable.new(@criteria)
+    end
+
+    it "executes the criteria" do
+      acc = []
+      @context.iterate do |doc|
+        acc << doc
+      end
+      acc.should == [@melbourne]
+    end
   end
 
   describe "#last" do
@@ -321,6 +350,39 @@ describe Mongoid::Contexts::Enumerable do
 
       end
 
+      context "when an array of object ids" do
+
+        let(:ids) do
+          (0..2).inject([]) { |ary, i| ary << Mongo::ObjectID.new }
+        end
+
+        context "when documents are found" do
+
+          let(:docs) do
+            (0..2).inject([]) { |ary, i| ary << stub }
+          end
+
+          before do
+            criteria.expects(:id).with(ids).returns(criteria)
+          end
+
+          it "returns matching documents" do
+            context.expects(:execute).returns(docs)
+            context.id_criteria(ids).should == docs
+          end
+
+        end
+
+        context "when documents are not found" do
+
+          it "raises an error" do
+            context.expects(:execute).returns([])
+            lambda { context.id_criteria(ids) }.should raise_error
+          end
+
+        end
+
+      end
     end
 
   end

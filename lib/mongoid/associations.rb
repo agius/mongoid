@@ -6,6 +6,8 @@ require "mongoid/associations/has_many"
 require "mongoid/associations/has_many_related"
 require "mongoid/associations/has_one"
 require "mongoid/associations/has_one_related"
+require "mongoid/associations/options"
+require "mongoid/associations/meta_data"
 
 module Mongoid # :nodoc:
   module Associations #:nodoc:
@@ -28,13 +30,13 @@ module Mongoid # :nodoc:
 
       # Updates all the one-to-many relational associations for the name.
       def update_associations(name)
-        send(name).each { |doc| doc.save }
+        send(name).each { |doc| doc.save } if new_record?
       end
 
       # Update the one-to-one relational association for the name.
       def update_association(name)
         association = send(name)
-        association.save unless association.nil?
+        association.save if new_record? && !association.nil?
       end
     end
 
@@ -87,14 +89,12 @@ module Mongoid # :nodoc:
       #   end
       #
       def belongs_to_related(name, options = {}, &block)
-        field "#{name.to_s}_id"
-        index "#{name.to_s}_id" unless self.embedded
-        add_association(
-          Associations::BelongsToRelated,
-          Associations::Options.new(
-            options.merge(:name => name, :extend => block)
+        opts = Associations::Options.new(
+            options.merge(:name => name, :extend => block, :foreign_key => foreign_key(name, options))
           )
-        )
+        add_association(Associations::BelongsToRelated, opts)
+        field(opts.foreign_key, :type => Mongoid.use_object_ids ? Mongo::ObjectID : String)
+        index(opts.foreign_key) unless self.embedded
       end
 
       # Adds the association from a parent document to its children. The name
@@ -140,10 +140,9 @@ module Mongoid # :nodoc:
       #   end
       #
       def has_many_related(name, options = {}, &block)
-        add_association(
-          Associations::HasManyRelated,
+        add_association(Associations::HasManyRelated,
           Associations::Options.new(
-            options.merge(:name => name, :parent_key => self.name.foreign_key, :extend => block)
+            options.merge(:name => name, :foreign_key => foreign_key(self.name, options), :extend => block)
           )
         )
         before_save do |document|
@@ -197,7 +196,7 @@ module Mongoid # :nodoc:
         add_association(
           Associations::HasOneRelated,
           Associations::Options.new(
-            options.merge(:name => name, :parent_key => self.name.foreign_key, :extend => block)
+            options.merge(:name => name, :foreign_key => foreign_key(name, options), :extend => block)
           )
         )
         before_save do |document|
@@ -226,7 +225,7 @@ module Mongoid # :nodoc:
       # getters for the associations will perform the necessary memoization.
       def add_association(type, options)
         name = options.name.to_s
-        associations[name] = type
+        associations[name] = MetaData.new(type, options)
         define_method(name) do
           memoized(name) { type.instantiate(self, options) }
         end
@@ -252,6 +251,11 @@ module Mongoid # :nodoc:
           document = send("build_#{name}", attrs)
           document.save; document
         end
+      end
+
+      # Find the foreign key.
+      def foreign_key(name, options)
+        options[:foreign_key] || name.to_s.foreign_key
       end
     end
   end

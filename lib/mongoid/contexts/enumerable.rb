@@ -2,10 +2,10 @@
 module Mongoid #:nodoc:
   module Contexts #:nodoc:
     class Enumerable
-      include Paging
+      include Ids, Paging
       attr_reader :criteria
 
-      delegate :first, :last, :to => :execute
+      delegate :blank?, :empty?, :first, :last, :to => :execute
       delegate :documents, :options, :selector, :to => :criteria
 
       # Return aggregation counts of the grouped documents. This will count by
@@ -25,16 +25,6 @@ module Mongoid #:nodoc:
         @count ||= documents.size
       end
 
-      # Groups the documents by the first field supplied in the field options.
-      #
-      # Returns:
-      #
-      # A +Hash+ with field values as keys, arrays of documents as values.
-      def group
-        field = options[:fields].first
-        documents.group_by { |doc| doc.send(field) }
-      end
-
       # Enumerable implementation of execute. Returns matching documents for
       # the selector, and adds options if supplied.
       #
@@ -45,23 +35,14 @@ module Mongoid #:nodoc:
         limit(documents.select { |document| document.matches?(selector) })
       end
 
-      # Return documents based on an id search. Will handle if a single id has
-      # been passed or mulitple ids.
-      #
-      # Example:
-      #
-      #   context.id_criteria([1, 2, 3])
+      # Groups the documents by the first field supplied in the field options.
       #
       # Returns:
       #
-      # The single or multiple documents.
-      def id_criteria(params)
-        criteria.id(params)
-        result = params.is_a?(String) ? one : criteria.entries
-        if Mongoid.raise_not_found_error
-          raise Errors::DocumentNotFound.new(klass, params) if result.blank?
-        end
-        return result
+      # A +Hash+ with field values as keys, arrays of documents as values.
+      def group
+        field = options[:fields].first
+        documents.group_by { |doc| doc.send(field) }
       end
 
       # Create the new enumerable context. This will need the selector and
@@ -73,6 +54,16 @@ module Mongoid #:nodoc:
       # <tt>Mongoid::Contexts::Enumerable.new(criteria)</tt>
       def initialize(criteria)
         @criteria = criteria
+      end
+
+      # Iterate over each +Document+ in the results. This can take an optional
+      # block to pass to each argument in the results.
+      #
+      # Example:
+      #
+      # <tt>context.iterate { |doc| p doc }</tt>
+      def iterate(&block)
+        execute.each(&block)
       end
 
       # Get the largest value for the field in all the documents.
@@ -126,6 +117,8 @@ module Mongoid #:nodoc:
         skip, limit = options[:skip], options[:limit]
         if skip && limit
           return documents.slice(skip, limit)
+        elsif limit
+          return documents.first(limit)
         end
         documents
       end

@@ -2,12 +2,11 @@
 module Mongoid #:nodoc:
   module Contexts #:nodoc:
     class Mongo
-      include Paging
+      include Ids, Paging
       attr_reader :criteria
 
       delegate :klass, :options, :selector, :to => :criteria
 
-      AGGREGATE_REDUCE = "function(obj, prev) { prev.count++; }"
       # Aggregate the context. This will take the internally built selector and options
       # and pass them on to the Ruby driver's +group()+ method on the collection. The
       # collection itself will be retrieved from the class provided, and once the
@@ -21,8 +20,20 @@ module Mongoid #:nodoc:
       #
       # A +Hash+ with field values as keys, counts as values
       def aggregate
-        klass.collection.group(options[:fields], selector, { :count => 0 }, AGGREGATE_REDUCE, true)
+        klass.collection.group(options[:fields], selector, { :count => 0 }, Javascript.aggregate, true)
       end
+
+      # Determine if the context is empty or blank given the criteria. Will
+      # perform a quick has_one asking only for the id.
+      #
+      # Example:
+      #
+      # <tt>context.blank?</tt>
+      def blank?
+        klass.collection.find_one(selector, { :fields => [ :_id ] }).nil?
+      end
+
+      alias :empty? :blank?
 
       # Get the count of matching documents in the database for the context.
       #
@@ -44,7 +55,7 @@ module Mongoid #:nodoc:
       #
       # Example:
       #
-      # <tt>mongo.execute</tt>
+      # <tt>context.execute</tt>
       #
       # Returns:
       #
@@ -59,7 +70,6 @@ module Mongoid #:nodoc:
         end
       end
 
-      GROUP_REDUCE = "function(obj, prev) { prev.group.push(obj); }"
       # Groups the context. This will take the internally built selector and options
       # and pass them on to the Ruby driver's +group()+ method on the collection. The
       # collection itself will be retrieved from the class provided, and once the
@@ -77,7 +87,7 @@ module Mongoid #:nodoc:
           options[:fields],
           selector,
           { :group => [] },
-          GROUP_REDUCE,
+          Javascript.group,
           true
         ).collect do |docs|
           docs["group"] = docs["group"].collect do |attrs|
@@ -85,25 +95,6 @@ module Mongoid #:nodoc:
           end
           docs
         end
-      end
-
-      # Return documents based on an id search. Will handle if a single id has
-      # been passed or mulitple ids.
-      #
-      # Example:
-      #
-      #   context.id_criteria([1, 2, 3])
-      #
-      # Returns:
-      #
-      # The single or multiple documents.
-      def id_criteria(params)
-        criteria.id(params)
-        result = params.is_a?(String) ? one : criteria.entries
-        if Mongoid.raise_not_found_error
-          raise Errors::DocumentNotFound.new(klass, params) if result.blank?
-        end
-        return result
       end
 
       # Create the new mongo context. This will execute the queries given the
@@ -114,8 +105,23 @@ module Mongoid #:nodoc:
       # <tt>Mongoid::Contexts::Mongo.new(criteria)</tt>
       def initialize(criteria)
         @criteria = criteria
-        if criteria.klass.hereditary
+        if klass.hereditary && Mongoid.persist_types
           criteria.in(:_type => criteria.klass._types)
+        end
+        criteria.enslave if klass.enslaved?
+        criteria.cache if klass.cached?
+      end
+
+      # Iterate over each +Document+ in the results. This can take an optional
+      # block to pass to each argument in the results.
+      #
+      # Example:
+      #
+      # <tt>context.iterate { |doc| p doc }</tt>
+      def iterate(&block)
+        return caching(&block) if criteria.cached?
+        if block_given?
+          execute.each { |doc| yield doc }
         end
       end
 
@@ -139,8 +145,6 @@ module Mongoid #:nodoc:
         attributes ? Mongoid::Factory.build(klass, attributes) : nil
       end
 
-      MAX_REDUCE = "function(obj, prev) { if (prev.max == 'start') { prev.max = obj.[field]; } " +
-        "if (prev.max < obj.[field]) { prev.max = obj.[field]; } }"
       # Return the max value for a field.
       #
       # This will take the internally built selector and options
@@ -156,11 +160,9 @@ module Mongoid #:nodoc:
       #
       # A numeric max value.
       def max(field)
-        grouped(:max, field.to_s, MAX_REDUCE)
+        grouped(:max, field.to_s, Javascript.max)
       end
 
-      MIN_REDUCE = "function(obj, prev) { if (prev.min == 'start') { prev.min = obj.[field]; } " +
-        "if (prev.min > obj.[field]) { prev.min = obj.[field]; } }"
       # Return the min value for a field.
       #
       # This will take the internally built selector and options
@@ -176,7 +178,7 @@ module Mongoid #:nodoc:
       #
       # A numeric minimum value.
       def min(field)
-        grouped(:min, field.to_s, MIN_REDUCE)
+        grouped(:min, field.to_s, Javascript.min)
       end
 
       # Return the first result for the +Context+.
@@ -195,7 +197,6 @@ module Mongoid #:nodoc:
 
       alias :first :one
 
-      SUM_REDUCE = "function(obj, prev) { if (prev.sum == 'start') { prev.sum = 0; } prev.sum += obj.[field]; }"
       # Sum the context.
       #
       # This will take the internally built selector and options
@@ -211,7 +212,7 @@ module Mongoid #:nodoc:
       #
       # A numeric value that is the sum.
       def sum(field)
-        grouped(:sum, field.to_s, SUM_REDUCE)
+        grouped(:sum, field.to_s, Javascript.sum)
       end
 
       # Common functionality for grouping operations. Currently used by min, max
@@ -238,6 +239,20 @@ module Mongoid #:nodoc:
         options.dup
       end
 
+      protected
+
+      # Iterate over each +Document+ in the results and cache the collection.
+      def caching(&block)
+        if defined? @collection
+          @collection.each(&block)
+        else
+          @collection = []
+          execute.each do |doc|
+            @collection << doc
+            yield doc if block_given?
+          end
+        end
+      end
     end
   end
 end
